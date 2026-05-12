@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MathViz — Unified Classroom Geometry & Trig</title>
+    <!-- Tailwind CSS for modern UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for function plotting -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --navy-bg: #0f172a;
+            --emerald: #10b981;
+            --canvas-bg: #ffffff;
+            --canvas-text: #1e293b;
+        }
+
+        body.dark {
+            --canvas-bg: #1e293b;
+            --canvas-text: #f8fafc;
+        }
+
+        body.present-mode .ui-element {
+            display: none !important;
+        }
+
+        #canvas-container {
+            position: relative;
+            overflow: hidden;
+            cursor: crosshair;
+            background-color: var(--canvas-bg);
+            transition: background-color 0.3s ease;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .side-panel {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .collapsed-left { transform: translateX(-100%); }
+        .collapsed-right { transform: translateX(100%); }
+
+        .spotlight-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            background: radial-gradient(circle 150px at var(--x) var(--y), transparent 100%, rgba(0,0,0,0.8) 100%);
+            z-index: 9999;
+            display: none;
+        }
+
+        .custom-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #334155;
+            border-radius: 5px;
+            outline: none;
+        }
+
+        .custom-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--emerald);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 overflow-hidden select-none">
+
+    <!-- Spotlight Layer -->
+    <div id="spotlight" class="spotlight-overlay"></div>
+
+    <!-- Main Layout -->
+    <div class="flex h-screen w-screen relative">
+        
+        <!-- Left Sidebar: Tools & Shapes -->
+        <aside id="left-panel" class="side-panel w-72 bg-slate-800 border-r border-slate-700 z-50 flex flex-col ui-element">
+            <div class="p-4 border-b border-slate-700 flex justify-between items-center">
+                <h1 class="text-xl font-bold text-emerald-400">MathViz</h1>
+                <button onclick="toggleSidebar('left-panel')" class="hover:text-emerald-400"><i data-lucide="chevron-left"></i></button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                <!-- Shape Library -->
+                <div>
+                    <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Shape Library</h2>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="addShape('rightTriangle')" class="p-2 bg-slate-700 hover:bg-emerald-600 rounded text-xs flex flex-col items-center gap-1">
+                            <i data-lucide="triangle"></i> Right Δ
+                        </button>
+                        <button onclick="addShape('isoscelesTriangle')" class="p-2 bg-slate-700 hover:bg-emerald-600 rounded text-xs flex flex-col items-center gap-1">
+                            <i data-lucide="triangle"></i> Isosceles Δ
+                        </button>
+                        <button onclick="addShape('circle')" class="p-2 bg-slate-700 hover:bg-emerald-600 rounded text-xs flex flex-col items-center gap-1">
+                            <i data-lucide="circle"></i> Circle
+                        </button>
+                        <button onclick="addShape('rectangle')" class="p-2 bg-slate-700 hover:bg-emerald-600 rounded text-xs flex flex-col items-center gap-1">
+                            <i data-lucide="square"></i> Rectangle
+                        </button>
+                        <button onclick="addShape('rhombus')" class="p-2 bg-slate-700 hover:bg-emerald-600 rounded text-xs flex flex-col items-center gap-1">
+                            <i data-lucide="diamond"></i> Rhombus
+                        </button>
+                        <button onclick="addShape('trapezoid')" class="p-2 bg-slate-700 hover:bg-emerald-600 rounded text-xs flex flex-col items-center gap-1">
+                            <i data-lucide="box"></i> Trapezoid
+                        </button>
+                        <button onclick="addShape('hexagon')" class="p-2 bg-slate-700 hover:bg-emerald-600 rounded text-xs flex flex-col items-center gap-1">
+                            <i data-lucide="hexagon"></i> Hexagon
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Canvas Controls -->
+                <div>
+                    <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Canvas</h2>
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-2 cursor-pointer text-sm">
+                            <input type="checkbox" id="grid-toggle" checked onchange="draw()" class="accent-emerald-500"> Snap to Grid
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer text-sm">
+                            <input type="checkbox" id="angles-toggle" checked onchange="draw()" class="accent-emerald-500"> Show Angle Arcs
+                        </label>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <button onclick="undo()" class="flex-1 p-2 bg-slate-700 hover:bg-slate-600 rounded" title="Undo"><i data-lucide="undo-2" class="mx-auto"></i></button>
+                        <button onclick="redo()" class="flex-1 p-2 bg-slate-700 hover:bg-slate-600 rounded" title="Redo"><i data-lucide="redo-2" class="mx-auto"></i></button>
+                        <button onclick="clearCanvas()" class="flex-1 p-2 bg-red-900/40 hover:bg-red-600 rounded text-red-400" title="Clear All"><i data-lucide="trash-2" class="mx-auto"></i></button>
+                    </div>
+                </div>
+
+                <!-- Active Shape Properties -->
+                <div id="properties-panel" class="hidden border-t border-slate-700 pt-4">
+                    <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Selected Shape</h2>
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm">Color</span>
+                            <input type="color" id="shape-color" oninput="updateShapeColor(this.value)" class="w-8 h-8 rounded border-0 bg-transparent cursor-pointer">
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="duplicateShape()" class="flex-1 p-2 bg-emerald-600 hover:bg-emerald-500 rounded text-xs">Duplicate</button>
+                            <button onclick="deleteSelected()" class="flex-1 p-2 bg-red-600 hover:bg-red-500 rounded text-xs">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Global Footer Controls -->
+            <div class="p-4 bg-slate-900/50 border-t border-slate-700 space-y-2">
+                <button onclick="togglePresentation()" class="w-full p-3 bg-emerald-600 hover:bg-emerald-500 rounded font-bold flex items-center justify-center gap-2">
+                    <i data-lucide="presentation"></i> PRESENT
+                </button>
+            </div>
+        </aside>
+
+        <!-- Toggle Buttons (Visible when panels closed) -->
+        <button onclick="toggleSidebar('left-panel')" class="absolute left-0 top-1/2 -translate-y-1/2 bg-slate-800 p-2 rounded-r border border-l-0 border-slate-700 z-40 ui-element">
+            <i data-lucide="chevron-right"></i>
+        </button>
+
+        <!-- Main Canvas Area -->
+        <main class="flex-1 relative flex flex-col bg-slate-950">
+            <!-- Canvas Toolbar -->
+            <div class="p-2 flex gap-4 items-center bg-slate-800 border-b border-slate-700 ui-element">
+                <div class="flex bg-slate-900 rounded p-1">
+                    <button onclick="setViewMode('geometry')" id="btn-geo" class="px-4 py-1 rounded bg-emerald-600 text-sm font-medium transition-colors">Geometry</button>
+                    <button onclick="setViewMode('graph')" id="btn-graph" class="px-4 py-1 rounded hover:bg-slate-700 text-sm font-medium transition-colors">Function Graph</button>
+                </div>
+                <div class="flex gap-2 text-slate-400 ml-auto">
+                    <button onclick="zoomCanvas(1.1)" class="p-1 hover:text-white"><i data-lucide="zoom-in"></i></button>
+                    <button onclick="zoomCanvas(0.9)" class="p-1 hover:text-white"><i data-lucide="zoom-out"></i></button>
+                    <button onclick="resetView()" class="p-1 hover:text-white"><i data-lucide="maximize"></i></button>
+                    <div class="w-px h-6 bg-slate-700 mx-2"></div>
+                    <button onclick="toggleTheme()" class="p-1 hover:text-white"><i data-lucide="sun"></i></button>
+                </div>
+            </div>
+
+            <div id="canvas-container" class="flex-1 relative">
+                <!-- Main Interaction Canvas -->
+                <canvas id="geometryCanvas"></canvas>
+                
+                <!-- Graph Layer (Hidden by default) -->
+                <div id="graph-layer" class="absolute inset-0 bg-slate-900 p-8 hidden flex flex-col">
+                    <div class="flex gap-4 mb-4">
+                        <input type="text" id="function-input" value="sin(x)" class="flex-1 bg-slate-800 border border-slate-700 rounded px-4 py-2 focus:border-emerald-500 outline-none" placeholder="Enter function e.g. x^2 + 2*x + 1">
+                        <button onclick="plotFunction()" class="bg-emerald-600 px-6 rounded font-bold">Plot</button>
+                    </div>
+                    <div class="flex-1 bg-white rounded overflow-hidden relative">
+                        <canvas id="plotCanvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Presentation Spotlight Control -->
+                <button id="spotlight-btn" class="absolute bottom-6 left-6 w-12 h-12 rounded-full bg-emerald-500 text-white shadow-xl hidden z-[10000] items-center justify-center">
+                    <i data-lucide="flashlight"></i>
+                </button>
+            </div>
+        </main>
+
+        <!-- Right Sidebar: Trig Calculator -->
+        <aside id="right-panel" class="side-panel w-80 bg-slate-800 border-l border-slate-700 z-50 flex flex-col ui-element">
+            <div class="p-4 border-b border-slate-700 flex justify-between items-center">
+                <button onclick="toggleSidebar('right-panel')" class="hover:text-emerald-400"><i data-lucide="chevron-right"></i></button>
+                <h2 class="text-xl font-bold">Trig Calculator</h2>
+            </div>
+            
+            <div class="p-6 space-y-8 overflow-y-auto">
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-sm mb-2">
+                            <span>Angle θ</span>
+                            <span class="text-emerald-400 font-bold" id="trig-angle-val">45°</span>
+                        </div>
+                        <input type="range" id="trig-angle" min="1" max="89" value="45" class="custom-slider" oninput="updateTrig()">
+                    </div>
+
+                    <div>
+                        <label class="text-xs text-slate-400 uppercase mb-2 block">Known Side</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <select id="known-side-type" class="bg-slate-700 p-2 rounded text-sm outline-none" onchange="updateTrig()">
+                                <option value="opp">Opposite</option>
+                                <option value="adj">Adjacent</option>
+                                <option value="hyp">Hypotenuse</option>
+                            </select>
+                            <input type="number" id="known-side-val" value="10" class="bg-slate-700 p-2 rounded text-sm outline-none" oninput="updateTrig()">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 rounded-lg p-4 border border-slate-700 space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm opacity-70">sin θ</span>
+                        <span class="font-mono text-emerald-400" id="res-sin">0.7071</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm opacity-70">cos θ</span>
+                        <span class="font-mono text-emerald-400" id="res-cos">0.7071</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm opacity-70">tan θ</span>
+                        <span class="font-mono text-emerald-400" id="res-tan">1.0000</span>
+                    </div>
+                </div>
+
+                <div class="pt-4">
+                    <canvas id="miniTrigCanvas" width="240" height="150" class="mx-auto rounded bg-slate-900 border border-slate-700"></canvas>
+                </div>
+
+                <button onclick="sendToCanvas()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded font-bold text-sm">
+                    SEND TO CANVAS
+                </button>
+            </div>
+        </aside>
+
+        <button onclick="toggleSidebar('right-panel')" class="absolute right-0 top-1/2 -translate-y-1/2 bg-slate-800 p-2 rounded-l border border-r-0 border-slate-700 z-40 ui-element">
+            <i data-lucide="chevron-left"></i>
+        </button>
+    </div>
+
+    <script>
+        // --- CORE STATE ---
+        const canvas = document.getElementById('geometryCanvas');
+        const ctx = canvas.getContext('2d');
+        let shapes = [];
+        let selectedShape = null;
+        let isDragging = false;
+        let isResizing = false;
+        let isRotating = false;
+        let dragOffset = { x: 0, y: 0 };
+        let resizeHandle = null;
+        let camera = { x: 0, y: 0, zoom: 1 };
+        let history = [];
+        let redoStack = [];
+        let isPresenting = false;
+        let spotlightActive = false;
+        let viewMode = 'geometry';
+
+        // --- SHAPE CLASSES ---
+        class Shape {
+            constructor(type, x, y) {
+                this.id = Date.now() + Math.random();
+                this.type = type;
+                this.x = x;
+                this.y = y;
+                this.width = 150;
+                this.height = 100;
+                this.rotation = 0;
+                this.color = '#10b981';
+                this.locked = false;
+            }
+
+            getPoints() {
+                const pts = [];
+                const w = this.width;
+                const h = this.height;
+
+                switch(this.type) {
+                    case 'rectangle':
+                        pts.push({x: -w/2, y: -h/2}, {x: w/2, y: -h/2}, {x: w/2, y: h/2}, {x: -w/2, y: h/2});
+                        break;
+                    case 'rightTriangle':
+                        pts.push({x: -w/2, y: h/2}, {x: w/2, y: h/2}, {x: -w/2, y: -h/2});
+                        break;
+                    case 'isoscelesTriangle':
+                        pts.push({x: -w/2, y: h/2}, {x: w/2, y: h/2}, {x: 0, y: -h/2});
+                        break;
+                    case 'rhombus':
+                        pts.push({x: 0, y: -h/2}, {x: w/2, y: 0}, {x: 0, y: h/2}, {x: -w/2, y: 0});
+                        break;
+                    case 'hexagon':
+                        for(let i=0; i<6; i++) {
+                            const ang = (i * 60) * Math.PI / 180;
+                            pts.push({x: (w/2) * Math.cos(ang), y: (h/2) * Math.sin(ang)});
+                        }
+                        break;
+                    case 'trapezoid':
+                        pts.push({x: -w/2, y: h/2}, {x: w/2, y: h/2}, {x: w/3, y: -h/2}, {x: -w/3, y: -h/2});
+                        break;
+                    case 'circle':
+                        // Represented by bounding box mostly, but we draw a circle
+                        return [{x: 0, y: 0, r: w/2}];
+                }
+
+                return pts.map(p => {
+                    const rx = p.x * Math.cos(this.rotation) - p.y * Math.sin(this.rotation);
+                    const ry = p.x * Math.sin(this.rotation) + p.y * Math.cos(this.rotation);
+                    return { x: this.x + rx, y: this.y + ry };
+                });
+            }
+
+            draw() {
+                ctx.save();
+                const points = this.getPoints();
+                const isCircle = this.type === 'circle';
+
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = isPresenting ? 4 : 2;
+                ctx.fillStyle = this.color + '33';
+
+                if(isCircle) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.width/2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                } else {
+                    ctx.beginPath();
+                    ctx.moveTo(points[0].x, points[0].y);
+                    for(let i=1; i<points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                }
+
+                // Interaction Handles (if selected)
+                if(selectedShape === this && !isPresenting) {
+                    ctx.strokeStyle = '#fff';
+                    ctx.setLineDash([5, 5]);
+                    if(isCircle) {
+                        ctx.strokeRect(this.x - this.width/2 - 5, this.y - this.width/2 - 5, this.width + 10, this.width + 10);
+                    } else {
+                        // Drawing bounding box is complex when rotated, usually we just highlight the points
+                    }
+                    ctx.setLineDash([]);
+                    
+                    // Resizer handle
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(this.x + this.width/2 * Math.cos(this.rotation) - 5, this.y + this.height/2 * Math.sin(this.rotation) - 5, 10, 10);
+                    
+                    // Rotator handle
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y - this.height/2 - 20, 5, 0, Math.PI*2);
+                    ctx.fill();
+                }
+
+                // LABELS (Non-negotiable)
+                this.drawLabels(points, isCircle);
+                ctx.restore();
+            }
+
+            drawLabels(points, isCircle) {
+                ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--canvas-text');
+                ctx.font = isPresenting ? 'bold 16px Inter' : '12px Inter';
+                ctx.textAlign = 'center';
+
+                if(isCircle) {
+                    const radius = (this.width / 2).toFixed(1);
+                    ctx.fillText(`r: ${radius}`, this.x, this.y - 10);
+                    return;
+                }
+
+                // Side Lengths
+                for(let i=0; i<points.length; i++) {
+                    const p1 = points[i];
+                    const p2 = points[(i+1)%points.length];
+                    const dist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)).toFixed(1);
+                    const mx = (p1.x + p2.x) / 2;
+                    const my = (p1.y + p2.y) / 2;
+                    
+                    // Offset label away from center
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const nx = -dy / dist * 20;
+                    const ny = dx / dist * 20;
+
+                    ctx.fillText(dist, mx + nx, my + ny);
+                }
+
+                // Angles
+                for(let i=0; i<points.length; i++) {
+                    const pPrev = points[(i + points.length - 1) % points.length];
+                    const pCurr = points[i];
+                    const pNext = points[(i + 1) % points.length];
+
+                    const angle = this.calculateAngle(pPrev, pCurr, pNext);
+                    
+                    // Draw Arc
+                    if(document.getElementById('angles-toggle').checked) {
+                        const ang1 = Math.atan2(pPrev.y - pCurr.y, pPrev.x - pCurr.x);
+                        const ang2 = Math.atan2(pNext.y - pCurr.y, pNext.x - pCurr.x);
+                        ctx.beginPath();
+                        ctx.strokeStyle = this.color;
+                        ctx.arc(pCurr.x, pCurr.y, 20, ang1, ang2);
+                        ctx.stroke();
+                    }
+
+                    // Text position - bisect the angle
+                    const a1 = Math.atan2(pPrev.y - pCurr.y, pPrev.x - pCurr.x);
+                    const a2 = Math.atan2(pNext.y - pCurr.y, pNext.x - pCurr.x);
+                    let bisect = (a1 + a2) / 2;
+                    if (Math.abs(a1 - a2) > Math.PI) bisect += Math.PI;
+                    
+                    const tx = pCurr.x + Math.cos(bisect) * 35;
+                    const ty = pCurr.y + Math.sin(bisect) * 35;
+                    ctx.fillText(`${Math.round(angle)}°`, tx, ty);
+                }
+            }
+
+            calculateAngle(p1, p2, p3) {
+                const d12 = Math.sqrt(Math.pow(p1.x-p2.x, 2) + Math.pow(p1.y-p2.y, 2));
+                const d23 = Math.sqrt(Math.pow(p2.x-p3.x, 2) + Math.pow(p2.y-p3.y, 2));
+                const d13 = Math.sqrt(Math.pow(p1.x-p3.x, 2) + Math.pow(p1.y-p3.y, 2));
+                return Math.acos((d12*d12 + d23*d23 - d13*d13) / (2 * d12 * d23)) * 180 / Math.PI;
+            }
+        }
+
+        // --- INITIALIZATION ---
+        window.onload = () => {
+            lucide.createIcons();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            setupEventListeners();
+            updateTrig();
+            requestAnimationFrame(drawLoop);
+        };
+
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            draw();
+        }
+
+        function drawLoop() {
+            draw();
+            requestAnimationFrame(drawLoop);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Grid
+            if(document.getElementById('grid-toggle').checked) {
+                ctx.strokeStyle = document.body.classList.contains('dark') ? '#334155' : '#e2e8f0';
+                ctx.lineWidth = 1;
+                const step = 50 * camera.zoom;
+                for(let x = camera.x % step; x < canvas.width; x += step) {
+                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+                }
+                for(let y = camera.y % step; y < canvas.height; y += step) {
+                    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+                }
+            }
+
+            shapes.forEach(s => s.draw());
+
+            // Proximity Distance Line
+            if(shapes.length >= 2 && selectedShape) {
+                shapes.forEach(s => {
+                    if(s === selectedShape) return;
+                    const d = Math.sqrt(Math.pow(s.x - selectedShape.x, 2) + Math.pow(s.y - selectedShape.y, 2));
+                    if(d < 300) {
+                        ctx.beginPath();
+                        ctx.setLineDash([2, 2]);
+                        ctx.strokeStyle = '#64748b';
+                        ctx.moveTo(selectedShape.x, selectedShape.y);
+                        ctx.lineTo(s.x, s.y);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                        ctx.fillStyle = '#64748b';
+                        ctx.fillText(d.toFixed(0), (s.x + selectedShape.x)/2, (s.y + selectedShape.y)/2 - 10);
+                    }
+                });
+            }
+        }
+
+        // --- INTERACTION LOGIC ---
+        function setupEventListeners() {
+            canvas.addEventListener('mousedown', e => {
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                // Check for selection
+                let found = null;
+                for(let i = shapes.length - 1; i >= 0; i--) {
+                    const s = shapes[i];
+                    const dist = Math.sqrt(Math.pow(s.x - mouseX, 2) + Math.pow(s.y - mouseY, 2));
+                    if(dist < s.width/2 + 20) {
+                        found = s;
+                        break;
+                    }
+                }
+
+                if(found) {
+                    saveHistory();
+                    selectedShape = found;
+                    isDragging = true;
+                    dragOffset.x = mouseX - found.x;
+                    dragOffset.y = mouseY - found.y;
+                    document.getElementById('properties-panel').classList.remove('hidden');
+                    document.getElementById('shape-color').value = found.color;
+                } else {
+                    selectedShape = null;
+                    document.getElementById('properties-panel').classList.add('hidden');
+                }
+            });
+
+            window.addEventListener('mousemove', e => {
+                if(!isDragging || !selectedShape) return;
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                let nx = mouseX - dragOffset.x;
+                let ny = mouseY - dragOffset.y;
+
+                // Snap to grid
+                if(document.getElementById('grid-toggle').checked) {
+                    nx = Math.round(nx / 25) * 25;
+                    ny = Math.round(ny / 25) * 25;
+                }
+
+                selectedShape.x = nx;
+                selectedShape.y = ny;
+            });
+
+            window.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            // Presentation Spotlight
+            document.getElementById('spotlight-btn').onclick = () => {
+                spotlightActive = !spotlightActive;
+                const spot = document.getElementById('spotlight');
+                spot.style.display = spotlightActive ? 'block' : 'none';
+                if(spotlightActive) {
+                    window.onmousemove = (e) => {
+                        spot.style.setProperty('--x', e.clientX + 'px');
+                        spot.style.setProperty('--y', e.clientY + 'px');
+                    };
+                } else {
+                    window.onmousemove = null;
+                }
+            };
+        }
+
+        // --- ACTION FUNCTIONS ---
+        function addShape(type) {
+            saveHistory();
+            const s = new Shape(type, canvas.width / 2, canvas.height / 2);
+            shapes.push(s);
+            selectedShape = s;
+            document.getElementById('properties-panel').classList.remove('hidden');
+        }
+
+        function deleteSelected() {
+            if(!selectedShape) return;
+            saveHistory();
+            shapes = shapes.filter(s => s !== selectedShape);
+            selectedShape = null;
+            document.getElementById('properties-panel').classList.add('hidden');
+        }
+
+        function duplicateShape() {
+            if(!selectedShape) return;
+            saveHistory();
+            const n = new Shape(selectedShape.type, selectedShape.x + 30, selectedShape.y + 30);
+            n.width = selectedShape.width;
+            n.height = selectedShape.height;
+            n.rotation = selectedShape.rotation;
+            n.color = selectedShape.color;
+            shapes.push(n);
+            selectedShape = n;
+        }
+
+        function updateShapeColor(val) {
+            if(selectedShape) selectedShape.color = val;
+        }
+
+        function toggleSidebar(id) {
+            const el = document.getElementById(id);
+            const isLeft = id === 'left-panel';
+            if(isLeft) el.classList.toggle('collapsed-left');
+            else el.classList.toggle('collapsed-right');
+            setTimeout(resizeCanvas, 350);
+        }
+
+        function setViewMode(mode) {
+            viewMode = mode;
+            const geoBtn = document.getElementById('btn-geo');
+            const graphBtn = document.getElementById('btn-graph');
+            const graphLayer = document.getElementById('graph-layer');
+
+            if(mode === 'geometry') {
+                geoBtn.className = "px-4 py-1 rounded bg-emerald-600 text-sm font-medium transition-colors";
+                graphBtn.className = "px-4 py-1 rounded hover:bg-slate-700 text-sm font-medium transition-colors";
+                graphLayer.classList.add('hidden');
+            } else {
+                graphBtn.className = "px-4 py-1 rounded bg-emerald-600 text-sm font-medium transition-colors";
+                geoBtn.className = "px-4 py-1 rounded hover:bg-slate-700 text-sm font-medium transition-colors";
+                graphLayer.classList.remove('hidden');
+                plotFunction();
+            }
+        }
+
+        // --- TRIG CALCULATOR ---
+        function updateTrig() {
+            const angleDeg = parseFloat(document.getElementById('trig-angle').value);
+            const sideVal = parseFloat(document.getElementById('known-side-val').value);
+            const type = document.getElementById('known-side-type').value;
+            
+            document.getElementById('trig-angle-val').innerText = angleDeg + "°";
+            
+            const rad = angleDeg * Math.PI / 180;
+            const s = Math.sin(rad);
+            const c = Math.cos(rad);
+            const t = Math.tan(rad);
+
+            document.getElementById('res-sin').innerText = s.toFixed(4);
+            document.getElementById('res-cos').innerText = c.toFixed(4);
+            document.getElementById('res-tan').innerText = t.toFixed(4);
+
+            // Draw mini diagram
+            const mctx = document.getElementById('miniTrigCanvas').getContext('2d');
+            mctx.clearRect(0,0,240,150);
+            mctx.strokeStyle = '#10b981';
+            mctx.lineWidth = 2;
+            mctx.beginPath();
+            mctx.moveTo(40, 120);
+            mctx.lineTo(200, 120);
+            mctx.lineTo(40, 30);
+            mctx.closePath();
+            mctx.stroke();
+            mctx.fillStyle = '#10b981';
+            mctx.fillText("θ", 55, 110);
+        }
+
+        function sendToCanvas() {
+            saveHistory();
+            const angleDeg = parseFloat(document.getElementById('trig-angle').value);
+            const sideVal = parseFloat(document.getElementById('known-side-val').value) * 10; // Scale for canvas
+            const rad = angleDeg * Math.PI / 180;
+            
+            const s = new Shape('rightTriangle', canvas.width/2, canvas.height/2);
+            s.width = sideVal;
+            s.height = sideVal * Math.tan(rad);
+            shapes.push(s);
+            selectedShape = s;
+            setViewMode('geometry');
+        }
+
+        // --- GRAPHING ---
+        let myChart = null;
+        function plotFunction() {
+            const expr = document.getElementById('function-input').value;
+            const ctxPlot = document.getElementById('plotCanvas').getContext('2d');
+            
+            const labels = [];
+            const data = [];
+            
+            try {
+                // Simple parser/evaluator for classroom needs
+                const func = new Function('x', `return ${expr.replace(/sin/g, 'Math.sin').replace(/cos/g, 'Math.cos').replace(/tan/g, 'Math.tan').replace(/pow/g, 'Math.pow').replace(/\^/g, '**')}`);
+                
+                for(let x = -10; x <= 10; x += 0.2) {
+                    labels.push(x.toFixed(1));
+                    data.push(func(x));
+                }
+
+                if(myChart) myChart.destroy();
+                myChart = new Chart(ctxPlot, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: expr,
+                            data: data,
+                            borderColor: '#10b981',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { grid: { color: '#e2e8f0' } },
+                            x: { grid: { color: '#e2e8f0' } }
+                        }
+                    }
+                });
+            } catch(e) {
+                console.error("Invalid function");
+            }
+        }
+
+        // --- CLASSROOM MODES ---
+        function togglePresentation() {
+            isPresenting = !isPresenting;
+            document.body.classList.toggle('present-mode');
+            document.getElementById('spotlight-btn').classList.toggle('hidden');
+            if(isPresenting) {
+                document.getElementById('left-panel').classList.add('collapsed-left');
+                document.getElementById('right-panel').classList.add('collapsed-right');
+            } else {
+                document.getElementById('left-panel').classList.remove('collapsed-left');
+                document.getElementById('right-panel').classList.remove('collapsed-right');
+            }
+            setTimeout(resizeCanvas, 400);
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('dark');
+            draw();
+        }
+
+        // --- HISTORY ---
+        function saveHistory() {
+            history.push(JSON.stringify(shapes));
+            if(history.length > 50) history.shift();
+            redoStack = [];
+        }
+
+        function undo() {
+            if(history.length === 0) return;
+            redoStack.push(JSON.stringify(shapes));
+            const last = history.pop();
+            shapes = JSON.parse(last).map(sData => {
+                const s = new Shape(sData.type, sData.x, sData.y);
+                Object.assign(s, sData);
+                return s;
+            });
+            draw();
+        }
+
+        function redo() {
+            if(redoStack.length === 0) return;
+            history.push(JSON.stringify(shapes));
+            const next = redoStack.pop();
+            shapes = JSON.parse(next).map(sData => {
+                const s = new Shape(sData.type, sData.x, sData.y);
+                Object.assign(s, sData);
+                return s;
+            });
+            draw();
+        }
+
+        function clearCanvas() {
+            saveHistory();
+            shapes = [];
+            selectedShape = null;
+        }
+
+        function resetView() {
+            camera = { x: 0, y: 0, zoom: 1 };
+            draw();
+        }
+    </script>
+</body>
+</html>//
+//  Untitled.swift
+//  Cs
+//
+//  Created by Miraç Açıkkapı on 12.05.2026.
+//
+
